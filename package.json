@@ -1,7 +1,7 @@
 {
-  "name": "crosslightning-server-base",
-  "version": "1.0.3",
-  "description": "Base for server-side crosslightning, features command & config parser",
+  "name": "@atomiqlabs/server-base",
+  "version": "1.0.4",
+  "description": " Base libs for nodejs servers, offering command and config parsing",
   "main": "./dist/index.js",
   "types:": "./dist/index.d.ts",
   "scripts": {
