@@ -136,7 +136,11 @@ export class CommandHandler {
                     console.error(err);
                     socket.write("Error: "+(err.message!=null ? err.message : JSON.stringify(err))+"\n> ");
                 });
-            })
+            });
+
+            socket.on("error", (err) => {
+                console.error("CommandHandler: Socket error: ", err);
+            });
         });
         await new Promise<void>(resolve => this.server.listen(this.listeningPort, this.listeningAddress, () => {
             resolve();
