@@ -212,11 +212,11 @@ export class CommandHandler {
             return Promise.resolve("Error: Unknown command, please type 'help' to get a list of all commands!");
         }
 
-        const result = minimist(args, {string: Object.keys(cmd.runtime.args)}); //Treat all keys as string
+        const result = minimist(args, {string: ["_"].concat(Object.keys(cmd.runtime.args))}); //Treat all keys as string
 
         const paramsObj: any = {};
 
-        let index = 0;
+        let index = 1;
         for(let key in cmd.runtime.args) {
             if(cmd.runtime.args[key].base) {
                 if(result[key]==null && result._[index]!=null) result[key] = result._[index];
