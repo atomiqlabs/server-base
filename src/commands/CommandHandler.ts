@@ -198,26 +198,25 @@ export class CommandHandler {
             if (!element) return;
             return args.push(element.replace(/"/g, ''));
         });
-        const result = minimist(args);
 
-        const commandText = result._[0];
-
-        if(commandText==="help") {
-            if(result._[1]!=null && this.commands[result._[1]]!=null) {
-                return Promise.resolve(this.getCommandHelp(this.commands[result._[1]]));
+        if(args[0]==="help") {
+            if(args[1]!=null && this.commands[args[1]]!=null) {
+                return Promise.resolve(this.getCommandHelp(this.commands[args[1]]));
             }
             return Promise.resolve(this.getHelp());
         }
 
-        const cmd = this.commands[commandText];
+        const cmd = this.commands[args[0]];
 
         if(cmd==null) {
             return Promise.resolve("Error: Unknown command, please type 'help' to get a list of all commands!");
         }
 
+        const result = minimist(args, {string: Object.keys(cmd.runtime.args)}); //Treat all keys as string
+
         const paramsObj: any = {};
 
-        let index = 1;
+        let index = 0;
         for(let key in cmd.runtime.args) {
             if(cmd.runtime.args[key].base) {
                 if(result[key]==null && result._[index]!=null) result[key] = result._[index];
