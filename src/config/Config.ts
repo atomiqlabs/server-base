@@ -1,4 +1,3 @@
-import * as BN from "bn.js";
 import {fromDecimal} from "../Utils";
 
 export type ConfigParser<T> = (data: any) => T;
@@ -27,7 +26,7 @@ export const numberParser: (decimal: boolean, min?: number, max?: number, option
     return data;
 };
 
-export const decimalToBNParser: (decimals: number, min?: number, max?: number, optional?: boolean) => ConfigParser<BN>  = (decimals: number, min?: number, max?: number, optional?: boolean) => (data: any) => {
+export const decimalToBigIntParser: (decimals: number, min?: number, max?: number, optional?: boolean) => ConfigParser<bigint>  = (decimals: number, min?: number, max?: number, optional?: boolean) => (data: any) => {
     if(data==null) {
         if(optional) {
             return null;
@@ -45,9 +44,9 @@ export const decimalToBNParser: (decimals: number, min?: number, max?: number, o
     return toPPM;
 };
 
-export const percentageToPpmParser: (min?: number, max?: number, optional?: boolean) => ConfigParser<BN>  = (min?: number, max?: number, optional?: boolean) => decimalToBNParser(4, min, max, optional);
+export const percentageToPpmParser: (min?: number, max?: number, optional?: boolean) => ConfigParser<bigint>  = (min?: number, max?: number, optional?: boolean) => decimalToBigIntParser(4, min, max, optional);
 
-export const bnParser: (min?: BN, max?: BN, optional?: boolean) => ConfigParser<BN>  = (min?: BN, max?: BN, optional?: boolean) => (data: any) => {
+export const bigIntParser: (min?: bigint, max?: bigint, optional?: boolean) => ConfigParser<bigint>  = (min?: bigint, max?: bigint, optional?: boolean) => (data: any) => {
     if(data==null) {
         if(optional) {
             return null;
@@ -55,10 +54,10 @@ export const bnParser: (min?: BN, max?: BN, optional?: boolean) => ConfigParser<
             throw new Error("Data is null");
         }
     }
-    let num: BN = new BN(data);
+    let num: bigint = BigInt(data);
     if(num==null) throw new Error("Number is NaN or null");
-    if(min!=null && num.lt(min)) throw new Error("Number must be greater than "+min.toString(10));
-    if(max!=null && num.gt(max)) throw new Error("Number must be less than "+max.toString(10));
+    if(min!=null && num < min) throw new Error("Number must be greater than "+min.toString(10));
+    if(max!=null && num > max) throw new Error("Number must be less than "+max.toString(10));
     return num;
 };
 

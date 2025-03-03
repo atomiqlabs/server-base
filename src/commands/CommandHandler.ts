@@ -1,8 +1,6 @@
-
 import {createServer, Server, Socket} from "net";
 import * as minimist from "minimist";
 import {createInterface} from "readline";
-import * as BN from "bn.js";
 
 export type ParamParser<T> = (data: string) => T;
 
@@ -44,7 +42,7 @@ export const cmdNumberParser: (decimal: boolean, min?: number, max?: number, opt
     return num;
 };
 
-export const cmdBNParser: (min?: BN, max?: BN, optional?: boolean) => ParamParser<BN>  = (min?: BN, max?: BN, optional?: boolean) => (data: string) => {
+export const cmdBigIntParser: (min?: bigint, max?: bigint, optional?: boolean) => ParamParser<bigint>  = (min?: bigint, max?: bigint, optional?: boolean) => (data: string) => {
     if(data==null) {
         if(optional) {
             return null;
@@ -52,10 +50,10 @@ export const cmdBNParser: (min?: BN, max?: BN, optional?: boolean) => ParamParse
             throw new Error("Data is null");
         }
     }
-    let num: BN = new BN(data);
+    let num: bigint = BigInt(data);
     if(num==null) throw new Error("Number is NaN or null");
-    if(min!=null && num.lt(min)) throw new Error("Number must be greater than "+min.toString(10));
-    if(max!=null && num.gt(max)) throw new Error("Number must be less than "+max.toString(10));
+    if(min!=null && num < min) throw new Error("Number must be greater than "+min.toString(10));
+    if(max!=null && num > max) throw new Error("Number must be less than "+max.toString(10));
     return num;
 };
 
