@@ -1,6 +1,7 @@
 import {createServer, Server, Socket} from "net";
 import * as minimist from "minimist";
 import {createInterface} from "readline";
+import { JsonRpcServer, RpcConfig } from "../rpc/JsonRpcServer";
 
 export type ParamParser<T> = (data: string) => T;
 
@@ -92,6 +93,7 @@ export function createCommand<T extends { [key: string]: any }>(cmd: string, des
 export class CommandHandler {
 
     server: Server;
+    rpcServer?: JsonRpcServer;
 
     readonly commands: {
         [key: string]: Command<any>
@@ -99,12 +101,14 @@ export class CommandHandler {
     readonly listeningPort: number;
     readonly listeningAddress: string;
     readonly introMessage: string;
+    readonly rpcConfig?: RpcConfig;
 
     constructor(
         commands: Command<any>[],
         listenAddress: string,
         listenPort: number,
-        introMessage: string
+        introMessage: string,
+        rpcConfig?: RpcConfig
     ) {
         this.commands = {};
         commands.forEach(cmd => {
@@ -113,15 +117,20 @@ export class CommandHandler {
         this.listeningAddress = listenAddress;
         this.listeningPort = listenPort;
         this.introMessage = introMessage;
+        this.rpcConfig = rpcConfig;
     }
 
     registerCommand(cmd: Command<any>): boolean {
         if(this.commands[cmd.cmd]!=null) return false;
         this.commands[cmd.cmd] = cmd;
+        
+        // The RPC server holds a reference to this.commands, so it will automatically see the new command
+        
         return true;
     }
 
     async init() {
+        // Start TCP CLI server
         this.server = createServer((socket) => {
             socket.write(this.introMessage+"\n");
             socket.write("Type 'help' to get a summary of existing commands!\n> ");
@@ -140,9 +149,22 @@ export class CommandHandler {
                 console.error("CommandHandler: Socket error: ", err);
             });
         });
+        
         await new Promise<void>(resolve => this.server.listen(this.listeningPort, this.listeningAddress, () => {
+            console.log(`CommandHandler: TCP CLI server listening on ${this.listeningAddress}:${this.listeningPort}`);
             resolve();
         }));
+
+        // Start RPC server if configured
+        if (this.rpcConfig) {
+            try {
+                this.rpcServer = new JsonRpcServer(this.commands, this.rpcConfig);
+                await this.rpcServer.start();
+            } catch (error) {
+                console.error("CommandHandler: Failed to start JSON-RPC server:", error);
+                throw error;
+            }
+        }
     }
 
     getUsageString(cmd: Command<any>): string {
@@ -228,6 +250,7 @@ export class CommandHandler {
         }
 
         return cmd.runtime.parser(paramsObj, (line: string) => socket.write(line+"\n"));
+
     }
 
 }
