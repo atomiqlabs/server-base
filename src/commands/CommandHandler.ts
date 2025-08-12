@@ -19,7 +19,7 @@ export type ParsedArgs<V, T extends ArgsTemplate<V>> = {
 
 export type CommandRuntime<T extends { [key: string]: any }> = {
     args: ArgsTemplate<T>,
-    parser: (args: ParsedArgs<T, ArgsTemplate<T>>, sendLine: (line: string) => void) => Promise<string>
+    parser: (args: ParsedArgs<T, ArgsTemplate<T>>, sendLine: (line: string) => void) => Promise<any>
 }
 
 export type Command<T extends { [key: string]: any }> = {
@@ -88,6 +88,22 @@ export const cmdStringParser: (minLength?: number, maxLength?: number, optional?
 
 export function createCommand<T extends { [key: string]: any }>(cmd: string, description: string, runtime: CommandRuntime<T>): Command<T> {
     return { cmd, description, runtime };
+}
+
+/**
+ * Formats a structured response for CLI display
+ */
+export function formatResponseForCli(response: any): string {
+    if (typeof response === 'string') {
+        return response;
+    }
+    
+    if (typeof response === 'object' && response !== null) {
+        // For objects, create a human-readable format
+        return JSON.stringify(response, null, 2);
+    }
+    
+    return String(response);
 }
 
 export class CommandHandler {
@@ -249,7 +265,9 @@ export class CommandHandler {
             }
         }
 
-        return cmd.runtime.parser(paramsObj, (line: string) => socket.write(line+"\n"));
+        return cmd.runtime.parser(paramsObj, (line: string) => socket.write(line+"\n")).then(commandResult => {
+            return formatResponseForCli(commandResult);
+        });
 
     }
 
