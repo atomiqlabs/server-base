@@ -1,6 +1,5 @@
-import {createServer, Server, Socket} from "net";
-import * as minimist from "minimist";
-import {createInterface} from "readline";
+import { JsonRpcServer, RpcConfig } from "../rpc/JsonRpcServer";
+import { TcpCliServer, TcpCliConfig } from "../tcp-cli/TcpCliServer";
 
 export type ParamParser<T> = (data: string) => T;
 
@@ -18,7 +17,7 @@ export type ParsedArgs<V, T extends ArgsTemplate<V>> = {
 
 export type CommandRuntime<T extends { [key: string]: any }> = {
     args: ArgsTemplate<T>,
-    parser: (args: ParsedArgs<T, ArgsTemplate<T>>, sendLine: (line: string) => void) => Promise<string>
+    parser: (args: ParsedArgs<T, ArgsTemplate<T>>, sendLine: (line: string) => void) => Promise<any>
 }
 
 export type Command<T extends { [key: string]: any }> = {
@@ -89,145 +88,80 @@ export function createCommand<T extends { [key: string]: any }>(cmd: string, des
     return { cmd, description, runtime };
 }
 
+
 export class CommandHandler {
 
-    server: Server;
+    tcpCliServer?: TcpCliServer;
+    rpcServer?: JsonRpcServer;
 
     readonly commands: {
         [key: string]: Command<any>
     };
-    readonly listeningPort: number;
-    readonly listeningAddress: string;
-    readonly introMessage: string;
+    readonly tcpCliConfig?: TcpCliConfig;
+    readonly rpcConfig?: RpcConfig;
 
     constructor(
         commands: Command<any>[],
-        listenAddress: string,
-        listenPort: number,
-        introMessage: string
+        tcpCliConfig?: TcpCliConfig,
+        rpcConfig?: RpcConfig
     ) {
         this.commands = {};
         commands.forEach(cmd => {
             this.commands[cmd.cmd] = cmd;
         });
-        this.listeningAddress = listenAddress;
-        this.listeningPort = listenPort;
-        this.introMessage = introMessage;
+        this.tcpCliConfig = tcpCliConfig;
+        this.rpcConfig = rpcConfig;
     }
 
     registerCommand(cmd: Command<any>): boolean {
         if(this.commands[cmd.cmd]!=null) return false;
         this.commands[cmd.cmd] = cmd;
+        
+        // Both RPC and TCP CLI servers hold a reference to this.commands, so they will automatically see the new command
+        
         return true;
     }
 
     async init() {
-        this.server = createServer((socket) => {
-            socket.write(this.introMessage+"\n");
-            socket.write("Type 'help' to get a summary of existing commands!\n> ");
-
-            const rl = createInterface({input: socket});
-            rl.on("line", (line) => {
-                this.parseLine(line, socket).then(result => {
-                    socket.write(result+"\n> ");
-                }).catch(err => {
-                    console.error(err);
-                    socket.write("Error: "+(err.message!=null ? err.message : JSON.stringify(err))+"\n> ");
-                });
-            });
-
-            socket.on("error", (err) => {
-                console.error("CommandHandler: Socket error: ", err);
-            });
-        });
-        await new Promise<void>(resolve => this.server.listen(this.listeningPort, this.listeningAddress, () => {
-            resolve();
-        }));
-    }
-
-    getUsageString(cmd: Command<any>): string {
-        const args = [];
-        for(let key in cmd.runtime.args) {
-            if (cmd.runtime.args[key].base) {
-                args.push("<"+key+">");
-            }
-        }
-        return cmd.cmd+" "+args.join(" ");
-    }
-
-    getParamsDescription(cmd: Command<any>): string[] {
-        const params = [];
-        for(let key in cmd.runtime.args) {
-            params.push("--"+key+" : "+cmd.runtime.args[key].description);
-        }
-        return params;
-    }
-
-    getCommandHelp(cmd: Command<any>): string {
-        const lines = [
-            "Command: "+cmd.cmd,
-            "Description: "+cmd.description,
-            "Usage: "+this.getUsageString(cmd)
-        ];
-
-        const paramLines = this.getParamsDescription(cmd);
-        if(paramLines.length!==0) lines.push("Params:");
-        paramLines.forEach(param => {
-            lines.push("    "+param);
-        });
-
-        return lines.join("\n");
-    }
-
-    getHelp(): string {
-        const lines = ["Available commands:"];
-        for(let key in this.commands) {
-            lines.push("    "+key+" : "+this.commands[key].description);
-        }
-        lines.push("Use 'help <command name>' for usage examples, description & help around a specific command!");
-        return lines.join("\n");
-    }
-
-    parseLine(line: string, socket: Socket): Promise<string> {
-        if(line==="") return Promise.resolve("");
-        const regex = new RegExp('"[^"]+"|[\\S]+', 'g');
-        const args = [];
-        line.match(regex).forEach(element => {
-            if (!element) return;
-            return args.push(element.replace(/"/g, ''));
-        });
-
-        if(args[0]==="help") {
-            if(args[1]!=null && this.commands[args[1]]!=null) {
-                return Promise.resolve(this.getCommandHelp(this.commands[args[1]]));
-            }
-            return Promise.resolve(this.getHelp());
-        }
-
-        const cmd = this.commands[args[0]];
-
-        if(cmd==null) {
-            return Promise.resolve("Error: Unknown command, please type 'help' to get a list of all commands!");
-        }
-
-        const result = minimist(args, {string: ["_"].concat(Object.keys(cmd.runtime.args))}); //Treat all keys as string
-
-        const paramsObj: any = {};
-
-        let index = 1;
-        for(let key in cmd.runtime.args) {
-            if(cmd.runtime.args[key].base) {
-                if(result[key]==null && result._[index]!=null) result[key] = result._[index];
-                index++;
-            }
+        // Start TCP CLI server if configured
+        if (this.tcpCliConfig) {
             try {
-                paramsObj[key] = cmd.runtime.args[key].parser(result[key]);
-            } catch (e) {
-                return Promise.resolve("Error: Parsing parameter '"+key+"': "+e.message+"\n\n"+this.getCommandHelp(cmd));
+                this.tcpCliServer = new TcpCliServer(this.commands, this.tcpCliConfig);
+                await this.tcpCliServer.start();
+            } catch (error) {
+                console.error("CommandHandler: Failed to start TCP CLI server:", error);
+                throw error;
             }
         }
 
-        return cmd.runtime.parser(paramsObj, (line: string) => socket.write(line+"\n"));
+        // Start RPC server if configured
+        if (this.rpcConfig) {
+            try {
+                this.rpcServer = new JsonRpcServer(this.commands, this.rpcConfig);
+                await this.rpcServer.start();
+            } catch (error) {
+                console.error("CommandHandler: Failed to start JSON-RPC server:", error);
+                throw error;
+            }
+        }
+    }
+
+    async stop(): Promise<void> {
+        const promises: Promise<void>[] = [];
+
+        if (this.tcpCliServer?.isRunning()) {
+            promises.push(this.tcpCliServer.stop());
+        }
+
+        if (this.rpcServer?.isRunning()) {
+            promises.push(this.rpcServer.stop());
+        }
+
+        await Promise.all(promises);
+    }
+
+    isRunning(): boolean {
+        return (this.tcpCliServer?.isRunning() || false) || (this.rpcServer?.isRunning() || false);
     }
 
 }
