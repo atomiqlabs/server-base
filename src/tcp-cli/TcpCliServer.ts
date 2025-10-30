@@ -4,19 +4,62 @@ import { Command } from "../commands/CommandHandler";
 import * as minimist from "minimist";
 
 /**
- * Formats a structured response for CLI display
+ * Converts camelCase / PascalCase / mixed-case strings with acronyms and numbers
+ * into readable sentence-style labels.
+ *
+ * Examples:
+ *   "firstName" → "First Name"
+ *   "getHTTPResponseCode" → "Get HTTP Response Code"
+ *   "isHTTPCode200Returned" → "Is HTTP Code 200 Returned"
  */
-function formatResponseForCli(response: any): string {
-    if (typeof response === 'string') {
-        return response;
+function camelToSentence(str: string): string {
+    return str
+        // Split before uppercase letters that follow lowercase or digits
+        .replace(/([a-z\d])([A-Z])/g, '$1 $2')
+        // Split between acronym and next capitalized word part (e.g., HTTPCode → HTTP Code)
+        .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+        // Split between letters and numbers (e.g., Code200 → Code 200)
+        .replace(/([a-zA-Z])(\d)/g, '$1 $2')
+        .replace(/(\d)([a-zA-Z])/g, '$1 $2')
+        // Capitalize first letter
+        .replace(/^./, s => s.toUpperCase());
+}
+
+/**
+ * Formats a structured response for CLI display
+ *
+ * Recursively converts a primitive type, object or array to a YAML-like formatted string.
+ */
+function objectToYamlString(obj: any, indentLevel: number = 0): string {
+    if(typeof obj !== "object") return String(obj);
+
+    const indent: string = '  '.repeat(indentLevel);
+    let result: string = '';
+    if (Array.isArray(obj)) {
+        // Arrays
+        for (const item of obj) {
+            if (typeof item === 'object') {
+                // Object inside array
+                result += `${indent}- ${objectToYamlString(item, indentLevel + 1).trimStart()}`;
+            } else {
+                // Primitive value
+                result += `${indent}- ${String(item)}\n`;
+            }
+        }
+        return result;
+    } else {
+        // Handle objects
+        for (const [key, value] of Object.entries(obj)) {
+            const formattedKey: string = camelToSentence(key);
+
+            if (typeof value === 'object') {
+                result += `${indent}${formattedKey}:\n${objectToYamlString(value, indentLevel + 1)}`;
+            } else {
+                result += `${indent}${formattedKey}: ${String(value)}\n`;
+            }
+        }
+        return result;
     }
-    
-    if (typeof response === 'object' && response !== null) {
-        // For objects, create a human-readable format
-        return JSON.stringify(response, null, 2);
-    }
-    
-    return String(response);
 }
 
 export interface TcpCliConfig {
@@ -173,7 +216,7 @@ export class TcpCliServer {
         }
 
         return cmd.runtime.parser(paramsObj, (line: string) => socket.write(line+"\n")).then(commandResult => {
-            return formatResponseForCli(commandResult);
+            return objectToYamlString(commandResult);
         });
     }
 }
